@@ -11,17 +11,20 @@ pip install flask flask-cors --break-system-packages
 
 Edit `server.py` and set `DB_PATH` to your actual dataset `.db` file
 (so it writes into the same table you're already building, not a new one).
-If your existing table has a different name/columns than `sites`
-(business_name, url, sector, category, established_year, source,
-date_added, notes), either rename the table in your DB to `sites` or edit
-the SQL in `init_db()` / `add_site()` to match your real schema. (City/state
-aren't tracked, since the sample is pan-India rather than region-stratified.)
+If your existing table has different columns than what `sites` now has —
+business_name, url, sector, category, established_year, score, tier, a
+status/detail pair per header (csp, hsts, xfo, referrer_policy,
+permissions_policy, xcto), cookie counts, server/x-powered-by disclosure,
+source, date_added, notes — either rename your table to `sites` or edit
+`EXTRA_COLUMNS` / the SQL in `add_site()` to match your real schema.
+(City/state aren't tracked, since the sample is pan-India rather than
+region-stratified.)
 
 If you're running this against a database you already started collecting
-data in before this version, `init_db()` will add the new
-`established_year` column to your existing `sites` table automatically the
-next time you start the server — existing rows just get `NULL` for that
-column until you go back and fill them in.
+data in before this version, `init_db()` will add any missing columns to
+your existing `sites` table automatically the next time you start the
+server — existing rows just get `NULL` for the new columns until you
+re-scan them.
 
 Run it:
 ```bash
@@ -48,9 +51,9 @@ it on `localhost:5000`.
    so correct anything wrong before saving. Many small sites won't have
    enough metadata to auto-fill cleanly; that's expected, just fill in
    manually
-5. **Year established is required** — the "Add to dataset" button will
-   refuse to save without a plausible 4-digit year. Auto-fill looks for
-   two kinds of signal, in this order:
+5. **Year established is required**, and **the site must have a captured
+   header scan** — the "Add to dataset" button will refuse to save without
+   both. Auto-fill for the year looks for two kinds of signal, in this order:
    - explicit wording ("Established 1998", "Founded in 2005", "Since 2012")
      — treated as reliable
    - failing that, the earliest year in a copyright notice ("© 1998–2024")
@@ -58,7 +61,11 @@ it on `localhost:5000`.
      a note) so you check it before saving, since a copyright year can
      reflect a site relaunch rather than the business's actual founding
 6. If it's a site you want in your dataset, click "Add to dataset" — it
-   checks for duplicates first via the URL UNIQUE constraint
+   checks for duplicates first via the URL UNIQUE constraint, then saves
+   the full scan (score, tier, per-header pass/weak/fail with reasons,
+   cookie flag counts, and any Server/X-Powered-By disclosure) alongside
+   the business metadata, so you don't have to re-scan a site later to get
+   its header data back
 
 ## Scoring methodology
 
