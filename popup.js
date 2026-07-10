@@ -1,5 +1,11 @@
 const BACKEND = "http://localhost:5000";
 
+// Populated in init() whenever headers are successfully captured for the
+// current tab. addToDataset() reads from this so the scan results that are
+// already on screen get saved, instead of being recomputed or (previously)
+// silently dropped.
+let lastScan = null;
+
 // ---- Core 6-header quality assessment ----------------------------------
 // Each check returns "pass" | "weak" | "fail" plus a short human reason.
 // "pass"/"fail" feed your paper's presence-based score (unchanged).
@@ -71,12 +77,12 @@ function checkPermissionsPolicy(headers) {
 // (hardware/feature misuse) and X-Content-Type-Options addresses an older,
 // narrower MIME-sniffing attack class - both weighted lowest.
 const REQUIRED_HEADERS = [
-  { key: "content-security-policy", label: "Content-Security-Policy", check: checkCSP, weight: 0.25 },
-  { key: "strict-transport-security", label: "Strict-Transport-Security", check: checkHSTS, weight: 0.20 },
-  { key: "x-frame-options", label: "X-Frame-Options", check: checkXFO, weight: 0.15 },
-  { key: "referrer-policy", label: "Referrer-Policy", check: checkReferrerPolicy, weight: 0.15 },
-  { key: "permissions-policy", label: "Permissions-Policy", check: checkPermissionsPolicy, weight: 0.15 },
-  { key: "x-content-type-options", label: "X-Content-Type-Options", check: checkXCTO, weight: 0.10 },
+  { key: "content-security-policy", label: "Content-Security-Policy", check: checkCSP, weight: 0.25, column: "csp" },
+  { key: "strict-transport-security", label: "Strict-Transport-Security", check: checkHSTS, weight: 0.20, column: "hsts" },
+  { key: "x-frame-options", label: "X-Frame-Options", check: checkXFO, weight: 0.15, column: "xfo" },
+  { key: "referrer-policy", label: "Referrer-Policy", check: checkReferrerPolicy, weight: 0.15, column: "referrer_policy" },
+  { key: "permissions-policy", label: "Permissions-Policy", check: checkPermissionsPolicy, weight: 0.15, column: "permissions_policy" },
+  { key: "x-content-type-options", label: "X-Content-Type-Options", check: checkXCTO, weight: 0.10, column: "xcto" },
 ];
 
 function tierFromScore(score) {
@@ -253,6 +259,8 @@ async function init() {
   const list = document.getElementById("header-list");
   list.innerHTML = "";
 
+  lastScan = null;
+
   if (!record) {
     document.getElementById("score").textContent =
       "No headers captured yet — reload this tab, then reopen the popup.";
@@ -267,10 +275,13 @@ async function init() {
     // what makes the score reflect actual effectiveness, not just presence.
     const CREDIT = { pass: 1.0, weak: 0.5, fail: 0.0 };
 
+    lastScan = { headers: {} };
+
     REQUIRED_HEADERS.forEach((h) => {
       const result = h.check(headers);
       weightedScore += h.weight * CREDIT[result.status];
       if (result.status !== "fail") presentCount++;
+      lastScan.headers[h.column] = result;
 
       const li = document.createElement("li");
       li.className = result.status; // "pass" | "weak" | "fail"
@@ -279,14 +290,18 @@ async function init() {
       list.appendChild(li);
     });
 
+    lastScan.score = weightedScore;
+    lastScan.tier = tierFromScore(weightedScore);
+
     document.getElementById("score").textContent =
-      `${weightedScore.toFixed(2)} / 1.00 \u2014 Tier ${tierFromScore(weightedScore)} (${presentCount}/6 headers present)`;
+      `${weightedScore.toFixed(2)} / 1.00 \u2014 Tier ${lastScan.tier} (${presentCount}/6 headers present)`;
 
     // Extra signals - informational, not part of the score
     const extraList = document.getElementById("extra-list");
     extraList.innerHTML = "";
 
     const cookieInfo = checkCookies(record.setCookies);
+    lastScan.cookies = cookieInfo;
     if (cookieInfo.present) {
       const li = document.createElement("li");
       li.textContent =
@@ -294,6 +309,9 @@ async function init() {
         `${cookieInfo.httpOnly} HttpOnly, ${cookieInfo.sameSite} SameSite`;
       extraList.appendChild(li);
     }
+
+    lastScan.serverHeader = headers["server"] || null;
+    lastScan.xPoweredBy = headers["x-powered-by"] || null;
 
     const disclosures = checkInfoDisclosure(headers);
     disclosures.forEach((d) => {
@@ -336,6 +354,11 @@ async function init() {
 async function addToDataset(url) {
   const statusEl = document.getElementById("status");
 
+  if (!lastScan) {
+    statusEl.textContent = "No header data captured yet — reload this tab, then reopen the popup before adding";
+    return;
+  }
+
   const yearRaw = document.getElementById("established-year").value.trim();
   const currentYear = new Date().getFullYear();
   const year = parseInt(yearRaw, 10);
@@ -354,7 +377,21 @@ async function addToDataset(url) {
     category: document.getElementById("category").value,
     established_year: year,
     notes: document.getElementById("notes").value,
+    score: lastScan.score,
+    tier: lastScan.tier,
+    cookies_total: lastScan.cookies.total,
+    cookies_secure: lastScan.cookies.secure,
+    cookies_httponly: lastScan.cookies.httpOnly,
+    cookies_samesite: lastScan.cookies.sameSite,
+    server_header: lastScan.serverHeader,
+    x_powered_by: lastScan.xPoweredBy,
   };
+
+  REQUIRED_HEADERS.forEach((h) => {
+    const result = lastScan.headers[h.column];
+    payload[`${h.column}_status`] = result.status;
+    payload[`${h.column}_detail`] = result.detail;
+  });
 
   try {
     const res = await fetch(`${BACKEND}/add_site`, {
