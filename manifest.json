@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "SME Header Auditor",
+  "version": "1.0",
+  "description": "Checks HTTP security headers on any site and logs SME sites to your research dataset.",
+  "permissions": ["activeTab", "storage", "webRequest", "webNavigation", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>", "http://localhost:5000/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
