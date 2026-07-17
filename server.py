@@ -63,7 +63,11 @@ HEADER_COLUMNS = ["csp", "hsts", "xfo", "referrer_policy", "permissions_policy",
 # Extra columns beyond the original schema, added incrementally as the tool
 # grew. Listed here (name -> SQL type) so both CREATE TABLE and the
 # migration loop in init_db() stay in sync with a single source of truth.
-EXTRA_COLUMNS = {"established_year": "INTEGER", "score": "REAL", "tier": "TEXT"}
+# Note: an older version of this tool also tracked "established_year". That
+# field has been dropped from the app; if your existing .db still has that
+# column from before, it's left alone (any data already in it is untouched)
+# - this app just no longer reads or writes it.
+EXTRA_COLUMNS = {"score": "REAL", "tier": "TEXT"}
 for col in HEADER_COLUMNS:
     EXTRA_COLUMNS[f"{col}_status"] = "TEXT"
     EXTRA_COLUMNS[f"{col}_detail"] = "TEXT"
@@ -121,17 +125,6 @@ def add_site():
     if not url:
         return jsonify({"status": "error", "message": "missing url"}), 400
 
-    established_year = data.get("established_year")
-    current_year = date.today().year
-    try:
-        established_year = int(established_year)
-        valid_year = 1900 <= established_year <= current_year
-    except (TypeError, ValueError):
-        valid_year = False
-
-    if not valid_year:
-        return jsonify({"status": "error", "message": "missing or invalid established_year"}), 400
-
     if data.get("score") is None or data.get("tier") is None:
         return jsonify({
             "status": "error",
@@ -139,7 +132,7 @@ def add_site():
         }), 400
 
     columns = [
-        "business_name", "url", "sector", "category", "established_year",
+        "business_name", "url", "sector", "category",
         "score", "tier",
     ]
     for col in HEADER_COLUMNS:
@@ -154,7 +147,6 @@ def add_site():
         "url": url,
         "sector": data.get("sector", ""),
         "category": data.get("category", ""),
-        "established_year": established_year,
         "score": data.get("score"),
         "tier": data.get("tier"),
         "cookies_total": data.get("cookies_total"),

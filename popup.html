@@ -84,13 +84,6 @@
       font-size: 12.5px;
       font-family: inherit;
     }
-    input.low-confidence {
-      border-color: #d68a00;
-      background: #fff8ea;
-    }
-    input.low-confidence::placeholder {
-      color: #a15c00;
-    }
 
     button {
       width: 100%;
@@ -130,10 +123,6 @@
     <input id="business-name" placeholder="Business name" />
     <input id="sector" placeholder="Sector (e.g. Healthcare, Retail, Finance)" />
     <input id="category" placeholder="Category (e.g. Retail – Grocery/FMCG)" />
-    <input id="established-year" placeholder="Year established (required, e.g. 1998)" inputmode="numeric" maxlength="4" />
-    <div id="established-hint" style="font-size:10.5px;color:#a15c00;margin:-4px 0 6px;display:none;">
-      Auto-filled from a copyright year, not an explicit "established" date — please verify.
-    </div>
     <textarea id="notes" placeholder="Notes" rows="2"></textarea>
     <button id="add-btn">Add to dataset</button>
     <div id="status"></div>

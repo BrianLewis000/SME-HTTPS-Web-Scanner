@@ -12,13 +12,12 @@ pip install flask flask-cors --break-system-packages
 Edit `server.py` and set `DB_PATH` to your actual dataset `.db` file
 (so it writes into the same table you're already building, not a new one).
 If your existing table has different columns than what `sites` now has —
-business_name, url, sector, category, established_year, score, tier, a
-status/detail pair per header (csp, hsts, xfo, referrer_policy,
-permissions_policy, xcto), cookie counts, server/x-powered-by disclosure,
-source, date_added, notes — either rename your table to `sites` or edit
-`EXTRA_COLUMNS` / the SQL in `add_site()` to match your real schema.
-(City/state aren't tracked, since the sample is pan-India rather than
-region-stratified.)
+business_name, url, sector, category, score, tier, a status/detail pair
+per header (csp, hsts, xfo, referrer_policy, permissions_policy, xcto),
+cookie counts, server/x-powered-by disclosure, source, date_added, notes —
+either rename your table to `sites` or edit `EXTRA_COLUMNS` / the SQL in
+`add_site()` to match your real schema. (City/state aren't tracked, since
+the sample is pan-India rather than region-stratified.)
 
 If you're running this against a database you already started collecting
 data in before this version, `init_db()` will add any missing columns to
@@ -46,20 +45,17 @@ it on `localhost:5000`.
 2. Click the extension icon
 3. You'll see pass/fail/weak on the 6 headers and a 0–1 quality-graded
    score with A–F tier
-4. Business name, sector, category, and year established are best-effort
-   auto-filled from page metadata and page text — all fields stay editable,
-   so correct anything wrong before saving. Many small sites won't have
-   enough metadata to auto-fill cleanly; that's expected, just fill in
-   manually
-5. **Year established is required**, and **the site must have a captured
-   header scan** — the "Add to dataset" button will refuse to save without
-   both. Auto-fill for the year looks for two kinds of signal, in this order:
-   - explicit wording ("Established 1998", "Founded in 2005", "Since 2012")
-     — treated as reliable
-   - failing that, the earliest year in a copyright notice ("© 1998–2024")
-     — treated as a weaker proxy and flagged in the popup (orange field +
-     a note) so you check it before saving, since a copyright year can
-     reflect a site relaunch rather than the business's actual founding
+4. Business name, sector, and category are best-effort auto-filled from
+   page metadata and JSON-LD structured data — all fields stay editable, so
+   correct anything wrong before saving. Category extraction skips generic
+   schema.org wrapper types (e.g. `Organization`, `WebPage`, `Person`) that
+   describe the page rather than the business, so it only fills in a
+   specific type (e.g. `Restaurant`, `ClothingStore`) when one is actually
+   present. Many small sites won't have enough metadata to auto-fill
+   cleanly; that's expected, just fill in manually
+5. **The site must have a captured header scan** — the "Add to dataset"
+   button will refuse to save if headers haven't loaded yet (reload the
+   tab and reopen the popup)
 6. If it's a site you want in your dataset, click "Add to dataset" — it
    checks for duplicates first via the URL UNIQUE constraint, then saves
    the full scan (score, tier, per-header pass/weak/fail with reasons,

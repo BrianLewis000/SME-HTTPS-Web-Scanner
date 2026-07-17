@@ -132,14 +132,45 @@ function extractMetadata() {
 
   let category = null;
 
+  // Schema.org types that show up constantly in JSON-LD but say nothing
+  // about what kind of business this actually is (page/site scaffolding,
+  // not the business itself). Skipping these instead of taking whatever
+  // @type happens to appear first avoids auto-filling category with
+  // useless values like "Organization" or "WebPage".
+  const GENERIC_LD_TYPES = new Set([
+    "Organization", "WebSite", "WebPage", "WebApplication", "BreadcrumbList",
+    "ImageObject", "Person", "Article", "NewsArticle", "BlogPosting",
+    "SearchAction", "Product", "Offer", "AggregateRating", "Review",
+    "CollectionPage", "ItemList", "SiteNavigationElement", "FAQPage",
+    "ContactPage", "AboutPage", "PostalAddress", "GeoCoordinates",
+    "LocalBusiness", "Thing", "CreativeWork", "EntryPoint",
+  ]);
+
+  const pickCategory = (typeValue) => {
+    const types = Array.isArray(typeValue) ? typeValue : [typeValue];
+    for (const t of types) {
+      if (typeof t === "string" && t.trim() && !GENERIC_LD_TYPES.has(t.trim())) {
+        return t.trim();
+      }
+    }
+    return null;
+  };
+
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
   for (const s of scripts) {
     try {
       const parsed = JSON.parse(s.textContent);
-      const items = Array.isArray(parsed) ? parsed : [parsed];
+      let items = Array.isArray(parsed) ? parsed : [parsed];
+      // Some SEO plugins (e.g. Yoast) nest everything under "@graph"
+      // instead of listing types at the top level - unwrap that too.
+      items = items.flatMap((it) => (it && Array.isArray(it["@graph"]) ? it["@graph"] : [it]));
       for (const item of items) {
+        if (!item || typeof item !== "object") continue;
         if (!businessName && item.name) businessName = item.name;
-        if (!category && item["@type"]) category = item["@type"];
+        if (!category) {
+          const picked = pickCategory(item["@type"]);
+          if (picked) category = picked;
+        }
       }
     } catch (e) {
       // not valid JSON-LD, skip
@@ -184,45 +215,7 @@ function extractMetadata() {
     }
   }
 
-  // Best-effort establishment year. Two tiers of confidence:
-  // "high" = explicit wording (established/founded/since <year>), which is
-  // about as reliable as self-reported text gets.
-  // "low" = a bare copyright year (© 1998) or a copyright range (© 1998-2024,
-  // taking the earlier year) — this is a common proxy but can be wrong
-  // (e.g. a site relaunch resetting the copyright year), so it's flagged
-  // in the UI for a manual check rather than trusted silently.
-  const currentYear = new Date().getFullYear();
-  const isPlausibleYear = (y) => y >= 1900 && y <= currentYear;
-  const pageText = document.body ? document.body.innerText : "";
-
-  let establishedYear = null;
-  let establishedConfidence = null;
-
-  const strongMatch = pageText.match(
-    /\b(?:established|est\.?|founded|incorporated|in\s*business)\s*(?:in|since)?\s*[:\-]?\s*(\d{4})\b/i
-  ) || pageText.match(/\bsince\s*(\d{4})\b/i);
-  if (strongMatch) {
-    const y = parseInt(strongMatch[1], 10);
-    if (isPlausibleYear(y)) {
-      establishedYear = y;
-      establishedConfidence = "high";
-    }
-  }
-
-  if (!establishedYear) {
-    const copyrightMatches = [...pageText.matchAll(/\u00a9\s*(\d{4})(?:\s*[-\u2013]\s*\d{2,4})?/g)];
-    let earliest = null;
-    copyrightMatches.forEach((m) => {
-      const y = parseInt(m[1], 10);
-      if (isPlausibleYear(y) && (earliest === null || y < earliest)) earliest = y;
-    });
-    if (earliest) {
-      establishedYear = earliest;
-      establishedConfidence = "low";
-    }
-  }
-
-  return { businessName, category, sector, establishedYear, establishedConfidence };
+  return { businessName, category, sector };
 }
 
 // ---- Main ------------------------------------------------------------
@@ -240,14 +233,6 @@ async function init() {
       if (result.businessName) document.getElementById("business-name").value = result.businessName;
       if (result.sector) document.getElementById("sector").value = result.sector;
       if (result.category) document.getElementById("category").value = result.category;
-      if (result.establishedYear) {
-        const yearInput = document.getElementById("established-year");
-        yearInput.value = result.establishedYear;
-        if (result.establishedConfidence === "low") {
-          yearInput.classList.add("low-confidence");
-          document.getElementById("established-hint").style.display = "block";
-        }
-      }
     }
   } catch (e) {
     // page blocks script injection (chrome:// pages, web store, etc.) - skip silently
@@ -328,12 +313,6 @@ async function init() {
     }
   }
 
-  const yearInputEl = document.getElementById("established-year");
-  yearInputEl.addEventListener("input", () => {
-    yearInputEl.classList.remove("low-confidence");
-    document.getElementById("established-hint").style.display = "none";
-  });
-
   const addBtn = document.getElementById("add-btn");
   const statusEl = document.getElementById("status");
 
@@ -359,23 +338,11 @@ async function addToDataset(url) {
     return;
   }
 
-  const yearRaw = document.getElementById("established-year").value.trim();
-  const currentYear = new Date().getFullYear();
-  const year = parseInt(yearRaw, 10);
-  const validYear = yearRaw !== "" && Number.isInteger(year) && year >= 1900 && year <= currentYear;
-
-  if (!validYear) {
-    statusEl.textContent = "Year established is required (e.g. 1998) before this can be saved";
-    document.getElementById("established-year").focus();
-    return;
-  }
-
   const payload = {
     url,
     business_name: document.getElementById("business-name").value,
     sector: document.getElementById("sector").value,
     category: document.getElementById("category").value,
-    established_year: year,
     notes: document.getElementById("notes").value,
     score: lastScan.score,
     tier: lastScan.tier,
